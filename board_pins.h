@@ -1,0 +1,14 @@
+#pragma once
+
+#ifndef IOT_IR_AC_HYBRID_BOARD_PINS_H
+#define IOT_IR_AC_HYBRID_BOARD_PINS_H
+
+// ESP32-S3 Super Mini — TSOP1738 + TSAL6200 (via S8050)
+#define IR_RX_PIN 4
+#define IR_TX_PIN 5
+
+#define FEEDBACK_CMD_LED_PIN 7
+#define FEEDBACK_BUZZER_PIN 6
+#define FEEDBACK_LEARN_LED_PIN 8
+
+#endif
