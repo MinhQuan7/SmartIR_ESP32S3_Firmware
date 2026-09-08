@@ -38,6 +38,8 @@ public:
 private:
   void setPhase(AcOnboardPhase phase);
   void onFrameCaptured(const AcIrFrame &frame);
+  void pollStepCapture();
+  static bool frameLooksBetter(const AcIrFrame &candidate, const AcIrFrame &current);
   void runProbe();
   void tickPostPair();
   bool isTimedOut() const;
@@ -54,6 +56,10 @@ private:
   AcPairingFlow flow_ = AcPairingFlow::kPowerOnOffTempUpTempDown;
   uint32_t phaseStartedMs_ = 0;
   uint32_t pairWarmupUntilMs_ = 0;
+  AcIrFrame pendingFrame_ = {};
+  bool hasPendingFrame_ = false;
+  uint32_t stepCollectUntilMs_ = 0;
+  uint32_t stepGuardUntilMs_ = 0;
   AcIrFrame frameOn_ = {};
   AcIrFrame frameOff_ = {};
   AcIrFrame frameTempUp_ = {};

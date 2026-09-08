@@ -26,7 +26,8 @@ bool validateSaneState(const stdAc::state_t &state)
 {
   if (!state.power)
     return true;
-  return state.degrees >= 16.0f && state.degrees <= 32.0f;
+  // 15C is a legit minimum on Sharp/AC remotes (kSharpAcMinTemp).
+  return state.degrees >= 15.0f && state.degrees <= 33.0f;
 }
 
 bool isDefaultLookingActiveState(const stdAc::state_t &state)
@@ -39,6 +40,12 @@ bool tryDecodeSingle(const AcIrFrame &frame, decode_type_t vendor, const stdAc::
                      stdAc::state_t *outState)
 {
   if (!outState || vendor == UNKNOWN || !IRac::isProtocolSupported(vendor))
+    return false;
+  // IRAcUtils::decodeToState() only reinterprets frame.state[] — it never re-validates
+  // timings or checksum. Those bytes are only meaningful when IRrecv natively decoded
+  // (checksum-verified) this exact frame as `vendor`. Forcing a vendor tag onto an
+  // UNKNOWN/partial frame fabricates a default state (e.g. SHARP_AC off/15C/auto).
+  if (frame.decodeType != vendor)
     return false;
 
   uint16_t rawBuf[AC_IR_MAX_RAW_LEN + 1];
@@ -212,6 +219,11 @@ bool AcSemanticDriver::decodeFrame(const AcIrFrame &frame, const AcDeviceProfile
 {
   if (!outState || profile.vendor == UNKNOWN)
     return false;
+  // Hard gate: only checksum-verified native decodes of the paired vendor carry a
+  // valid state[] payload. Anything else (UNKNOWN fragments, other vendors) must
+  // fall back to the raw matching path — never fabricate a semantic state.
+  if (frame.decodeType != profile.vendor)
+    return false;
 
   uint16_t rawBuf[AC_IR_MAX_RAW_LEN + 1];
   decode_results results = {};
@@ -219,34 +231,9 @@ bool AcSemanticDriver::decodeFrame(const AcIrFrame &frame, const AcDeviceProfile
 
   acIrFrameToDecodeResults(frame, UNKNOWN, &results, rawBuf,
                            (uint16_t)(AC_IR_MAX_RAW_LEN + 1));
-  if (IRAcUtils::decodeToState(&results, outState, prev) &&
-      results.decode_type == profile.vendor)
+  if (IRAcUtils::decodeToState(&results, outState, prev))
     return true;
-  if (IRAcUtils::decodeToState(&results, outState, nullptr) &&
-      results.decode_type == profile.vendor)
-    return true;
-
-  acIrFrameToDecodeResults(frame, profile.vendor, &results, rawBuf,
-                           (uint16_t)(AC_IR_MAX_RAW_LEN + 1));
-  if (IRAcUtils::decodeToState(&results, outState, prev) &&
-      results.decode_type == profile.vendor)
-    return true;
-  return IRAcUtils::decodeToState(&results, outState, nullptr) &&
-         results.decode_type == profile.vendor;
-}
-
-bool AcSemanticDriver::decodeFrameVendorStateless(const AcIrFrame &frame, decode_type_t vendor,
-                                                  stdAc::state_t *outState)
-{
-  if (!outState || vendor == UNKNOWN)
-    return false;
-
-  uint16_t rawBuf[AC_IR_MAX_RAW_LEN + 1];
-  decode_results results = {};
-  acIrFrameToDecodeResults(frame, vendor, &results, rawBuf,
-                           (uint16_t)(AC_IR_MAX_RAW_LEN + 1));
-  return IRAcUtils::decodeToState(&results, outState, nullptr) &&
-         results.decode_type == vendor;
+  return IRAcUtils::decodeToState(&results, outState, nullptr);
 }
 
 bool AcSemanticDriver::decodeFrameLocked(const AcIrFrame &frame, const AcDeviceProfile &profile,

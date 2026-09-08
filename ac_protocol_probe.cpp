@@ -30,6 +30,10 @@ bool tryDecodeFrame(const AcIrFrame &frame, decode_type_t vendor, const stdAc::s
     return false;
   if (!IRac::isProtocolSupported(vendor))
     return false;
+  // decodeToState() reinterprets frame.state[] without re-validating checksum, so a
+  // forced vendor is only valid when IRrecv natively decoded this frame as `vendor`.
+  if (frame.decodeType != vendor)
+    return false;
 
   sProbeScratch.resSingle = {};
   acIrFrameToDecodeResults(frame, vendor, &sProbeScratch.resSingle, sProbeScratch.rawSingle,
@@ -169,7 +173,8 @@ bool validateSaneState(const stdAc::state_t &state)
 {
   if (!state.power)
     return true;
-  return state.degrees >= 16.0f && state.degrees <= 32.0f;
+  // 15C is a legit minimum on Sharp/AC remotes (kSharpAcMinTemp).
+  return state.degrees >= 15.0f && state.degrees <= 33.0f;
 }
 
 bool validateOnOffOrientation(const stdAc::state_t &stateA, const stdAc::state_t &stateB)

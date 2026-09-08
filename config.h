@@ -24,7 +24,7 @@ static const char *CLIENT_ID = "your-gateway-id";
 static const bool ENABLE_DEBUG = true;
 
 #ifndef DTG_FIRMWARE_VERSION
-#define DTG_FIRMWARE_VERSION "1.4.6-hybrid"
+#define DTG_FIRMWARE_VERSION "1.4.7-hybrid"
 #endif
 
 // IR capture
@@ -68,6 +68,11 @@ static const bool ENABLE_DEBUG = true;
 #define AC_PROBE_CAPTURE_TIMEOUT_MS 60000
 /** Ignore IR captures briefly after entering pair (settle TSOP / drain noise). */
 #define AC_PAIR_SETTLE_MS 1000
+/** Pairing: collect the full burst of one keypress, keep the best frame
+ *  (native-decoded tag beats UNKNOWN, then longer raw length wins). */
+#define AC_PAIR_STEP_COLLECT_MS 450
+/** Pairing: drop stray tail fragments after a step frame is committed. */
+#define AC_PAIR_STEP_GUARD_MS 400
 
 // Climate
 #define AC_TEMP_MIN 16

@@ -38,9 +38,6 @@ public:
   bool sendState(const AcDeviceProfile &profile, const stdAc::state_t &desired);
   bool decodeFrame(const AcIrFrame &frame, const AcDeviceProfile &profile,
                    stdAc::state_t *outState);
-  /** Forced vendor decode without lastState linkage (repeat/partial frames). */
-  bool decodeFrameVendorStateless(const AcIrFrame &frame, decode_type_t vendor,
-                                  stdAc::state_t *outState);
   /** Locked paired vendor only; returns score when outScore set. */
   bool decodeFrameLocked(const AcIrFrame &frame, const AcDeviceProfile &profile,
                          stdAc::state_t *outState, uint8_t anchorScore, uint8_t *outScore = nullptr);

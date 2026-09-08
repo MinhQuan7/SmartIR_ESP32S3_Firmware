@@ -67,7 +67,8 @@ bool acClimateFromDecodedState(const stdAc::state_t &state, AcClimateState *out)
 {
   if (!out)
     return false;
-  if (state.power && (state.degrees < 16.0f || state.degrees > 32.0f))
+  // 15C is a legit minimum on Sharp/AC remotes (kSharpAcMinTemp).
+  if (state.power && (state.degrees < 15.0f || state.degrees > 33.0f))
     return false;
   acStateModel.fromStdAc(state);
   *out = acStateModel.climate();

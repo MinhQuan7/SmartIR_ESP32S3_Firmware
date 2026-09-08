@@ -40,6 +40,9 @@ bool AcOnboarding::start()
   frameOff_ = {};
   frameTempUp_ = {};
   frameTempDown_ = {};
+  hasPendingFrame_ = false;
+  stepCollectUntilMs_ = 0;
+  stepGuardUntilMs_ = 0;
   irTransport.disableRx();
   pairWarmupUntilMs_ = millis() + AC_PAIR_SETTLE_MS;
   setPhase(AcOnboardPhase::kPairWarmup);
@@ -57,6 +60,9 @@ void AcOnboarding::cancel()
 {
   phase_ = AcOnboardPhase::kIdle;
   pairWarmupUntilMs_ = 0;
+  hasPendingFrame_ = false;
+  stepCollectUntilMs_ = 0;
+  stepGuardUntilMs_ = 0;
   hasFrameOn_ = false;
   hasFrameOff_ = false;
   hasFrameTempUp_ = false;
@@ -71,15 +77,73 @@ bool AcOnboarding::isTimedOut() const
   return (millis() - phaseStartedMs_) > AC_PROBE_CAPTURE_TIMEOUT_MS;
 }
 
-void AcOnboarding::onFrameCaptured(const AcIrFrame &frame)
+bool AcOnboarding::frameLooksBetter(const AcIrFrame &candidate, const AcIrFrame &current)
 {
-  if (frame.repeat)
+  const bool candTagged = acProtocolIsValidVendor(candidate.decodeType);
+  const bool curTagged = acProtocolIsValidVendor(current.decodeType);
+  if (candTagged != curTagged)
+    return candTagged;
+  return candidate.rawLen > current.rawLen;
+}
+
+/**
+ * One remote keypress often lands as several captures: the real full-state frame
+ * plus truncated tail fragments (AGC dropouts / burst splits). Collect the whole
+ * burst for AC_PAIR_STEP_COLLECT_MS, keep only the best frame, then guard the next
+ * step against late fragments. This is what previously corrupted the POWER OFF
+ * step (a TEMP DOWN tail fragment was consumed as the OFF frame).
+ */
+void AcOnboarding::pollStepCapture()
+{
+  if (hasPendingFrame_ && (int32_t)(millis() - stepCollectUntilMs_) >= 0)
   {
-    if (ENABLE_DEBUG)
-      Serial.println(F("[PAIR] ignore repeat frame — press again"));
+    hasPendingFrame_ = false;
+    stepGuardUntilMs_ = millis() + AC_PAIR_STEP_GUARD_MS;
+    onFrameCaptured(pendingFrame_);
+    irTransport.flushRxBuffer();
     return;
   }
 
+  AcIrFrame frame = {};
+  if (!irTransport.pollCapture(&frame))
+    return;
+
+  if (frame.repeat)
+  {
+    if (ENABLE_DEBUG)
+      Serial.println(F("[PAIR] ignore repeat frame"));
+    return;
+  }
+
+  if (!hasPendingFrame_)
+  {
+    if (stepGuardUntilMs_ != 0 && (int32_t)(millis() - stepGuardUntilMs_) < 0)
+    {
+      if (ENABLE_DEBUG)
+        Serial.println(F("[PAIR] drop tail fragment (step guard)"));
+      return;
+    }
+    pendingFrame_ = frame;
+    hasPendingFrame_ = true;
+    stepCollectUntilMs_ = millis() + AC_PAIR_STEP_COLLECT_MS;
+    return;
+  }
+
+  if (frameLooksBetter(frame, pendingFrame_))
+  {
+    if (ENABLE_DEBUG)
+    {
+      Serial.print(F("[PAIR] burst upgrade type="));
+      Serial.print(acProtocolName(frame.decodeType));
+      Serial.print(F(" len="));
+      Serial.println(frame.rawLen);
+    }
+    pendingFrame_ = frame;
+  }
+}
+
+void AcOnboarding::onFrameCaptured(const AcIrFrame &frame)
+{
   if (phase_ == AcOnboardPhase::kWaitPowerOn)
   {
     frameOn_ = frame;
@@ -156,6 +220,7 @@ void AcOnboarding::tickPostPair()
     return;
 
   case PostPairAction::kFinalize:
+    irTransport.flushRxBuffer(); // drop late fragments of the final OFF press
     if (postPairSemantic_)
       acStateModel.fromStdAc(postPairStateOn_);
     else
@@ -340,9 +405,5 @@ void AcOnboarding::poll()
       phase_ != AcOnboardPhase::kWaitTempUp && phase_ != AcOnboardPhase::kWaitTempDown)
     return;
 
-  AcIrFrame frame = {};
-  if (!irTransport.pollCapture(&frame))
-    return;
-
-  onFrameCaptured(frame);
+  pollStepCapture();
 }

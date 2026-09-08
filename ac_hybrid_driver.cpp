@@ -94,8 +94,11 @@ bool trySemanticRemoteDecode(const AcIrFrame &frame, const AcDeviceProfile &prof
 
   if (profile.vendor != UNKNOWN)
   {
-    if ((acSemanticDriver.decodeFrameLocked(frame, profile, &state, anchor, &lockedScore) ||
-         acSemanticDriver.decodeFrameVendorStateless(frame, profile.vendor, &state)) &&
+    const uint8_t minRx = profile.mode == AcControlMode::kRawFallback
+                              ? AC_RX_DECODE_MIN_SCORE_RAW
+                              : AC_RX_DECODE_MIN_SCORE;
+    if (acSemanticDriver.decodeFrameLocked(frame, profile, &state, anchor, &lockedScore) &&
+        lockedScore >= minRx &&
         acSemanticDriver.passesRxPlausibility(state, profile, anchor) &&
         applyDecodedRemoteState(frame, profile, profile.vendor, state, outClimate, outRawSlot))
     {
@@ -109,6 +112,15 @@ bool trySemanticRemoteDecode(const AcIrFrame &frame, const AcDeviceProfile &prof
         Serial.println(anchor);
       }
       return true;
+    }
+    if (ENABLE_DEBUG && lockedScore > 0 && lockedScore < minRx)
+    {
+      Serial.print(F("[RX] locked reject score="));
+      Serial.print(lockedScore);
+      Serial.print(F(" min="));
+      Serial.print(minRx);
+      Serial.print(F(" frameType="));
+      Serial.println(acProtocolName(frame.decodeType));
     }
     return false;
   }
